@@ -12,30 +12,25 @@
 <style>
 :root{color-scheme:light dark}
 html,body{margin:0;height:100%;overflow:hidden;overscroll-behavior:none;background:light-dark(#fff,#181818);touch-action:manipulation;-webkit-tap-highlight-color:transparent;-webkit-text-size-adjust:100%}
-body{font-size:14px;line-height:1.5;padding:env(safe-area-inset-top) max(10px,env(safe-area-inset-right)) env(safe-area-inset-bottom) max(10px,env(safe-area-inset-left));box-sizing:border-box}
-.sr-only{position:absolute;width:1px;height:1px;padding:0;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
-/* Full-screen layout: the canvas takes whatever height the header, sticks and footer leave. */
-#flight3d{display:flex;flex-direction:column;height:100%}
-#flight3d .game-header,#flight3d .game-footer{flex:none}
-#flight3d .game-playfield{flex:1;min-height:0;display:flex;flex-direction:column}
-#flight3d #f3-world{flex:1;min-height:0;height:auto!important}
-#flight3d .game-playfield:has(.game-settings details[open]){min-height:0}
-#flight3d .game-settings{max-height:calc(100% - 24px);overflow:auto}
-#flight3d .game-radio{flex:none}
-@media(max-height:500px){#flight3d .game-footer{display:none}#flight3d .game-header{padding:6px 0}}
+body{font-size:14px;line-height:1.5}
 </style>
 </head>
 <body>
 <div id="flight3d">
   <header class="game-header">
-    <span class="game-title">Flight lab</span>
-    <label class="sr-only" for="f3-mode">Flight mode</label>
-    <select id="f3-mode" aria-label="Flight mode"><option value="pos">Poshold · DJI</option><option value="angle">Angle</option><option value="acro">Acro</option></select>
-    <div class="header-actions"><button id="f3-pause" type="button" aria-pressed="false">Pause</button><button id="f3-settings-button" type="button" aria-expanded="false" aria-controls="f3-settings">Settings</button></div>
+    <input id="f3-mode" type="hidden" value="pos">
+    <button id="f3-mode-button" type="button" aria-expanded="false" aria-controls="f3-modes">Mode: Poshold</button>
+    <div class="header-actions"><button id="f3-pause" type="button" aria-pressed="false">Pause</button><button id="f3-settings-button" type="button" aria-expanded="false" aria-controls="f3-settings">Settings</button><button id="f3-fullscreen" type="button" aria-label="Fullscreen" aria-pressed="false" hidden><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg></button></div>
   </header>
   <div class="game-playfield">
     <canvas id="f3-world" class="cursor-interaction" role="img" aria-label="Drone flight demonstrator with colored propellers, individual motor thrust arrows, force components and a ground plane. Drag the view to orbit, pinch or scroll to zoom."></canvas>
-    <div class="game-hud"><span id="f3-telemetry" aria-live="off"></span><div class="motor-key" aria-label="Prop speed relative to level hover"><span><i class="key-slow"></i>Slower</span><span><i class="key-neutral"></i>Neutral</span><span><i class="key-fast"></i>Faster</span></div></div>
+    <div class="game-hud"><div><div id="f3-telemetry" aria-live="off"></div><div id="f3-status" aria-live="polite"></div></div><div class="motor-key" aria-label="Prop speed relative to level hover"><span><i class="key-slow"></i>Slower</span><span><i class="key-neutral"></i>Neutral</span><span><i class="key-fast"></i>Faster</span></div></div>
+    <section id="f3-modes" class="game-settings" aria-label="Flight mode" hidden>
+      <div class="settings-heading"><span>Flight mode</span><button id="f3-modes-done" type="button">Done</button></div>
+      <button class="mode-choice" type="button" data-mode="pos" data-name="Poshold" aria-pressed="true"><b>Poshold · DJI</b><span>Sticks move and climb. Release to brake and hover.</span></button>
+      <button class="mode-choice" type="button" data-mode="angle" data-name="Angle" aria-pressed="false"><b>Angle</b><span>Sticks tilt. Release to level; momentum continues.</span></button>
+      <button class="mode-choice" type="button" data-mode="acro" data-name="Acro" aria-pressed="false"><b>Acro</b><span>Sticks rotate. Release to hold the angle.</span></button>
+    </section>
     <section id="f3-settings" class="game-settings" aria-label="Quick settings" hidden>
       <div class="settings-heading"><span>Quick settings</span><button id="f3-done" type="button">Done</button></div>
       <label class="game-switch"><span>Motor arrows</span><input id="f3-motor-arrows" type="checkbox" role="switch" checked></label>
@@ -53,7 +48,6 @@ body{font-size:14px;line-height:1.5;padding:env(safe-area-inset-top) max(10px,en
       <div class="game-stick"><canvas id="f3-right" class="cursor-interaction" role="img" aria-label="Right stick: roll horizontally, pitch vertically. Both axes return to center. Supports a second simultaneous touch."></canvas><span id="f3-right-label">Move</span></div>
     </div>
   </div>
-  <div class="game-footer"><span id="f3-status" aria-live="polite"></span><span class="view-hint">Drag view to orbit</span></div>
 </div>
 <style>
 #flight3d{--game-bg:light-dark(#edf3f5,#19242b);--game-panel:light-dark(#fff,#202e37);--game-fg:light-dark(#172733,#e4ecf1);--game-muted:light-dark(#596c79,#adbec9);--game-line:light-dark(#cfdbdf,#40545f);--game-selected:light-dark(#172733,#e4ecf1);--game-onselected:light-dark(#fff,#19242b);--sky:light-dark(#edf3f5,#1c2a35);--land:light-dark(#dce5d8,#334239);--grid:light-dark(#afc0b0,#526758);--drone-fill:light-dark(#c2ccd3,#7e8e9a);color:var(--game-fg);font-family:system-ui,sans-serif;container-type:inline-size}
@@ -85,6 +79,29 @@ body{font-size:14px;line-height:1.5;padding:env(safe-area-inset-top) max(10px,en
 @container(max-width:520px){#flight3d #f3-world{height:370px}#flight3d .game-radio{position:relative;left:auto;right:auto;bottom:auto;padding:8px 16px 16px}#flight3d .game-stick{width:148px}#flight3d .game-hud{left:12px;right:12px;top:12px}#flight3d .game-header{gap:6px}#flight3d .game-title{display:none}#flight3d button,#flight3d select{padding:8px 10px}#flight3d .motor-key{gap:9px}}
 @media(orientation:landscape) and (max-height:550px){#flight3d #f3-world{height:390px}#flight3d .game-stick{width:130px}}
 @media(prefers-reduced-motion:reduce){#flight3d .game-switch input:before{transition:none}}
+</style>
+<style>
+/* Full-screen: the canvas fills the viewport and every control floats over it. */
+#flight3d{position:fixed;inset:0;--safe-t:max(10px,env(safe-area-inset-top));--safe-r:max(12px,env(safe-area-inset-right));--safe-b:max(12px,env(safe-area-inset-bottom));--safe-l:max(12px,env(safe-area-inset-left))}
+#flight3d .game-playfield{position:absolute;inset:0;border-radius:0}
+#flight3d .game-playfield:has(.game-settings details[open]){min-height:0}
+#flight3d #f3-world{width:100%;height:100%!important}
+#flight3d .game-header{position:absolute;z-index:6;top:var(--safe-t);left:var(--safe-l);right:var(--safe-r);padding:0;gap:8px;flex-wrap:nowrap;pointer-events:none}
+#flight3d .game-header>*{pointer-events:auto}
+#flight3d button{min-height:44px;padding:8px 14px;background:color-mix(in srgb,var(--game-panel) 82%,transparent);-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);touch-action:manipulation}
+#flight3d #f3-mode-button{font-weight:500}
+#flight3d #f3-fullscreen{width:44px;padding:0;display:grid;place-items:center}
+#flight3d .game-hud{top:calc(var(--safe-t) + 54px)!important;left:var(--safe-l)!important;right:var(--safe-r)!important}
+#flight3d #f3-status{color:var(--game-muted)}
+#flight3d .game-radio{position:absolute!important;z-index:3;left:var(--safe-l)!important;right:var(--safe-r)!important;bottom:var(--safe-b)!important;padding:0!important}
+#flight3d .game-stick{width:clamp(130px,24vmin,190px)!important;max-width:44%}
+#flight3d .game-settings{z-index:7;top:50%;left:50%;right:auto;width:min(440px,calc(100% - 32px));max-width:none;max-height:calc(100% - 32px);overflow:auto;transform:translate(-50%,-50%);padding:20px;font-size:16px;box-shadow:0 0 0 100vmax #0007,0 8px 30px #0003}
+#flight3d .settings-heading{font-size:18px}
+#flight3d .mode-choice{display:grid;gap:2px;width:100%;margin-top:10px;padding:16px 18px;text-align:left;border-radius:14px;min-height:72px}
+#flight3d .mode-choice b{font-size:18px;font-weight:600}
+#flight3d .mode-choice span{color:var(--game-muted);font-size:14px}
+#flight3d .mode-choice[aria-pressed="true"]{background:var(--game-selected);color:var(--game-onselected)}
+#flight3d .mode-choice[aria-pressed="true"] span{color:inherit;opacity:.75}
 </style>
 <script>
 (()=>{
@@ -224,6 +241,18 @@ theme();sync();updateStatus();pauseUI();readings();requestAnimationFrame(loop);
 // The game re-reads its palette when data-theme changes.
 const scheme=matchMedia('(prefers-color-scheme: dark)'),setTheme=()=>document.documentElement.dataset.theme=scheme.matches?'dark':'light';
 setTheme();scheme.addEventListener('change',setTheme);
+// Mode overlay drives the hidden #f3-mode input, so the game's own change handler does the switching.
+const $=id=>document.getElementById(id),modes=$('f3-modes'),modeButton=$('f3-mode-button');
+const showModes=open=>{if(open&&!$('f3-settings').hidden)$('f3-done').click();modes.hidden=!open;modeButton.setAttribute('aria-expanded',String(open));};
+modeButton.onclick=()=>showModes(modes.hidden);$('f3-modes-done').onclick=()=>showModes(false);
+$('f3-settings-button').addEventListener('click',()=>showModes(false));
+for(const choice of modes.querySelectorAll('.mode-choice'))choice.onclick=()=>{$('f3-mode').value=choice.dataset.mode;$('f3-mode').dispatchEvent(new Event('change'));for(const c of modes.querySelectorAll('.mode-choice'))c.setAttribute('aria-pressed',String(c===choice));modeButton.textContent='Mode: '+choice.dataset.name;showModes(false);};
+document.addEventListener('keydown',e=>{if(e.key==='Escape')showModes(false);});
+// shortcut: iPhone Safari has no element fullscreen, so the button stays hidden there; Add to Home Screen gives a chrome-free app instead.
+const fs=$('f3-fullscreen'),page=document.documentElement,fsElement=()=>document.fullscreenElement||document.webkitFullscreenElement;
+if(page.requestFullscreen||page.webkitRequestFullscreen){fs.hidden=false;
+ fs.onclick=()=>fsElement()?(document.exitFullscreen||document.webkitExitFullscreen).call(document):(page.requestFullscreen||page.webkitRequestFullscreen).call(page);
+ const fsSync=()=>fs.setAttribute('aria-pressed',String(!!fsElement()));document.addEventListener('fullscreenchange',fsSync);document.addEventListener('webkitfullscreenchange',fsSync);}
 </script>
 </body>
 </html>
