@@ -1,0 +1,229 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#edf3f5" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#19242b" media="(prefers-color-scheme: dark)">
+<title>Drone Flight Lab</title>
+<style>
+:root{color-scheme:light dark}
+html,body{margin:0;height:100%;overflow:hidden;overscroll-behavior:none;background:light-dark(#fff,#181818);touch-action:manipulation;-webkit-tap-highlight-color:transparent;-webkit-text-size-adjust:100%}
+body{font-size:14px;line-height:1.5;padding:env(safe-area-inset-top) max(10px,env(safe-area-inset-right)) env(safe-area-inset-bottom) max(10px,env(safe-area-inset-left));box-sizing:border-box}
+.sr-only{position:absolute;width:1px;height:1px;padding:0;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+/* Full-screen layout: the canvas takes whatever height the header, sticks and footer leave. */
+#flight3d{display:flex;flex-direction:column;height:100%}
+#flight3d .game-header,#flight3d .game-footer{flex:none}
+#flight3d .game-playfield{flex:1;min-height:0;display:flex;flex-direction:column}
+#flight3d #f3-world{flex:1;min-height:0;height:auto!important}
+#flight3d .game-playfield:has(.game-settings details[open]){min-height:0}
+#flight3d .game-settings{max-height:calc(100% - 24px);overflow:auto}
+#flight3d .game-radio{flex:none}
+@media(max-height:500px){#flight3d .game-footer{display:none}#flight3d .game-header{padding:6px 0}}
+</style>
+</head>
+<body>
+<div id="flight3d">
+  <header class="game-header">
+    <span class="game-title">Flight lab</span>
+    <label class="sr-only" for="f3-mode">Flight mode</label>
+    <select id="f3-mode" aria-label="Flight mode"><option value="pos">Poshold · DJI</option><option value="angle">Angle</option><option value="acro">Acro</option></select>
+    <div class="header-actions"><button id="f3-pause" type="button" aria-pressed="false">Pause</button><button id="f3-settings-button" type="button" aria-expanded="false" aria-controls="f3-settings">Settings</button></div>
+  </header>
+  <div class="game-playfield">
+    <canvas id="f3-world" class="cursor-interaction" role="img" aria-label="Drone flight demonstrator with colored propellers, individual motor thrust arrows, force components and a ground plane. Drag the view to orbit, pinch or scroll to zoom."></canvas>
+    <div class="game-hud"><span id="f3-telemetry" aria-live="off"></span><div class="motor-key" aria-label="Prop speed relative to level hover"><span><i class="key-slow"></i>Slower</span><span><i class="key-neutral"></i>Neutral</span><span><i class="key-fast"></i>Faster</span></div></div>
+    <section id="f3-settings" class="game-settings" aria-label="Quick settings" hidden>
+      <div class="settings-heading"><span>Quick settings</span><button id="f3-done" type="button">Done</button></div>
+      <label class="game-switch"><span>Motor arrows</span><input id="f3-motor-arrows" type="checkbox" role="switch" checked></label>
+      <label class="game-switch"><span>Force breakdown</span><input id="f3-forces" type="checkbox" role="switch" checked></label>
+      <div class="settings-note">Neutral means level-hover speed.<br>Spin differences exaggerated ×8.</div>
+      <details><summary>Keyboard / precise controls</summary><div class="slider-controls">
+        <label>Throttle<input id="f3-throttle" type="range" min="0" max="100" value="50" aria-label="Throttle"></label>
+        <label>Yaw<input id="f3-yaw" type="range" min="-100" max="100" value="0" aria-label="Yaw"></label>
+        <label>Roll<input id="f3-roll" type="range" min="-100" max="100" value="0" aria-label="Roll"></label>
+        <label>Pitch<input id="f3-pitch" type="range" min="-100" max="100" value="0" aria-label="Pitch forward"></label>
+      </div></details>
+    </section>
+    <div class="game-radio">
+      <div class="game-stick"><canvas id="f3-left" class="cursor-interaction" role="img" aria-label="Left stick: yaw horizontally, throttle vertically. Both axes center in poshold. In angle and acro, throttle stays where released."></canvas><span id="f3-left-label">Turn · Climb</span></div>
+      <div class="game-stick"><canvas id="f3-right" class="cursor-interaction" role="img" aria-label="Right stick: roll horizontally, pitch vertically. Both axes return to center. Supports a second simultaneous touch."></canvas><span id="f3-right-label">Move</span></div>
+    </div>
+  </div>
+  <div class="game-footer"><span id="f3-status" aria-live="polite"></span><span class="view-hint">Drag view to orbit</span></div>
+</div>
+<style>
+#flight3d{--game-bg:light-dark(#edf3f5,#19242b);--game-panel:light-dark(#fff,#202e37);--game-fg:light-dark(#172733,#e4ecf1);--game-muted:light-dark(#596c79,#adbec9);--game-line:light-dark(#cfdbdf,#40545f);--game-selected:light-dark(#172733,#e4ecf1);--game-onselected:light-dark(#fff,#19242b);--sky:light-dark(#edf3f5,#1c2a35);--land:light-dark(#dce5d8,#334239);--grid:light-dark(#afc0b0,#526758);--drone-fill:light-dark(#c2ccd3,#7e8e9a);color:var(--game-fg);font-family:system-ui,sans-serif;container-type:inline-size}
+#flight3d *{box-sizing:border-box}#flight3d [hidden]{display:none!important}
+#flight3d .game-header{display:flex;align-items:center;gap:12px;padding:10px 0;flex-wrap:wrap}
+#flight3d .game-title{font-weight:500;margin-right:4px}#flight3d .header-actions{display:flex;gap:6px;margin-left:auto}
+#flight3d button,#flight3d select{font:inherit;color:var(--game-fg);background:var(--game-panel);border:1px solid var(--game-line);border-radius:9px;padding:8px 12px;min-height:40px}
+#flight3d button[aria-expanded="true"],#flight3d button[aria-pressed="true"]{background:var(--game-selected);color:var(--game-onselected)}
+#flight3d .game-playfield:has(.game-settings details[open]){min-height:550px}
+#flight3d .game-playfield{position:relative;background:var(--game-bg);border-radius:14px;overflow:hidden}
+#flight3d #f3-world{display:block;width:100%;height:540px;touch-action:none}
+#flight3d .game-hud{position:absolute;top:16px;left:18px;right:18px;display:flex;flex-wrap:wrap;justify-content:space-between;gap:8px 24px;pointer-events:none;font-variant-numeric:tabular-nums}
+#flight3d .motor-key{display:flex;align-items:center;gap:12px;color:var(--game-muted)}
+#flight3d .motor-key span{display:inline-flex;align-items:center;gap:5px}#flight3d .motor-key i{display:inline-block;width:9px;height:9px;border-radius:50%}
+#flight3d .key-slow{background:#1677ff}#flight3d .key-neutral{background:#000;box-shadow:0 0 0 1px #dce5e9}#flight3d .key-fast{background:#e53935}
+#flight3d .game-radio{position:absolute;left:18px;right:18px;bottom:18px;display:flex;justify-content:space-between;gap:24px;pointer-events:none;touch-action:none;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}
+#flight3d .game-stick{width:160px;max-width:42%;text-align:center;pointer-events:auto;color:var(--game-muted)}
+#flight3d .game-stick canvas{display:block;width:100%;height:auto;aspect-ratio:1;touch-action:none;background:color-mix(in srgb,var(--game-panel) 75%,transparent);border-radius:50%;margin-bottom:5px}
+#flight3d .game-settings{position:absolute;top:12px;right:12px;z-index:5;width:280px;max-width:calc(100% - 24px);padding:16px;background:var(--game-panel);border:1px solid var(--game-line);border-radius:14px;box-shadow:0 8px 30px #0002}
+#flight3d .settings-heading{display:flex;justify-content:space-between;align-items:center;gap:10px;font-weight:500;margin-bottom:12px}
+#flight3d .game-switch{display:flex;align-items:center;justify-content:space-between;gap:16px;min-height:56px}
+#flight3d .game-switch input{appearance:none;-webkit-appearance:none;position:relative;width:48px;height:28px;border:0;border-radius:18px;background:var(--game-line);flex-shrink:0}
+#flight3d .game-switch input:before{content:"";position:absolute;width:22px;height:22px;border-radius:50%;top:3px;left:3px;background:var(--game-panel);transition:transform .12s}
+#flight3d .game-switch input:checked{background:var(--game-selected)}#flight3d .game-switch input:checked:before{background:var(--game-onselected);transform:translateX(20px)}
+#flight3d .settings-note{color:var(--game-muted);margin:12px 0}#flight3d details{border-top:1px solid var(--game-line);padding-top:12px}
+#flight3d .slider-controls{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px}#flight3d .slider-controls label{display:grid;gap:4px;min-width:0}#flight3d input[type="range"]{width:100%;min-width:0}
+#flight3d .game-footer{display:flex;justify-content:space-between;gap:10px 24px;flex-wrap:wrap;color:var(--game-muted);padding:10px 0}#flight3d .view-hint{margin-left:auto}
+@media(orientation:portrait){#flight3d #f3-world{height:440px}#flight3d .game-radio{position:relative;left:auto;right:auto;bottom:auto;padding:12px 24px 18px}}
+@container(max-width:520px){#flight3d #f3-world{height:370px}#flight3d .game-radio{position:relative;left:auto;right:auto;bottom:auto;padding:8px 16px 16px}#flight3d .game-stick{width:148px}#flight3d .game-hud{left:12px;right:12px;top:12px}#flight3d .game-header{gap:6px}#flight3d .game-title{display:none}#flight3d button,#flight3d select{padding:8px 10px}#flight3d .motor-key{gap:9px}}
+@media(orientation:landscape) and (max-height:550px){#flight3d #f3-world{height:390px}#flight3d .game-stick{width:130px}}
+@media(prefers-reduced-motion:reduce){#flight3d .game-switch input:before{transition:none}}
+</style>
+<script>
+(()=>{
+const root=document.getElementById('flight3d'),el=n=>root.querySelector('#f3-'+n),c=el('world'),ctx=c.getContext('2d'),g=9.81,clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
+const V=(x=0,y=0,z=0)=>({x,y,z}),add=(a,b)=>V(a.x+b.x,a.y+b.y,a.z+b.z),sub=(a,b)=>V(a.x-b.x,a.y-b.y,a.z-b.z),mul=(a,s)=>V(a.x*s,a.y*s,a.z*s),dot=(a,b)=>a.x*b.x+a.y*b.y+a.z*b.z,cross=(a,b)=>V(a.y*b.z-a.z*b.y,a.z*b.x-a.x*b.z,a.x*b.y-a.y*b.x),norm=a=>Math.hypot(a.x,a.y,a.z),unit=a=>mul(a,1/(norm(a)||1));
+const qm=(a,b)=>({w:a.w*b.w-a.x*b.x-a.y*b.y-a.z*b.z,x:a.w*b.x+a.x*b.w+a.y*b.z-a.z*b.y,y:a.w*b.y-a.x*b.z+a.y*b.w+a.z*b.x,z:a.w*b.z+a.x*b.y-a.y*b.x+a.z*b.w}),qn=q=>{const n=Math.hypot(q.w,q.x,q.y,q.z);return {w:q.w/n,x:q.x/n,y:q.y/n,z:q.z/n};},axis=(v,a)=>({w:Math.cos(a/2),x:v.x*Math.sin(a/2),y:v.y*Math.sin(a/2),z:v.z*Math.sin(a/2)}),rot=(q,v)=>{const u=V(q.x,q.y,q.z);return add(v,add(mul(cross(u,v),2*q.w),mul(cross(u,cross(u,v)),2)));};
+function blend(a,b,k){if(a.w*b.w+a.x*b.x+a.y*b.y+a.z*b.z<0)b={w:-b.w,x:-b.x,y:-b.y,z:-b.z};return qn({w:a.w+(b.w-a.w)*k,x:a.x+(b.x-a.x)*k,y:a.y+(b.y-a.y)*k,z:a.z+(b.z-a.z)*k});}
+const attitude=(yaw,pitch,roll)=>qm(axis(V(0,1,0),-yaw),qm(axis(V(1,0,0),-pitch),axis(V(0,0,1),-roll)));
+let p=V(0,2.5,0),v=V(),q={w:1,x:0,y:0,z:0},omega=V(),heading=0,mode='pos',throttle=.5,yaw=0,roll=0,pitch=0,hold=V(0,2.5,0),wasMoving=false;
+let filtered=V(),filteredClimb=0,T=g,thrust=V(0,g,0),drag=V(),running=!matchMedia('(prefers-reduced-motion: reduce)').matches,width=736,height=540,last=0,acc=0,palette={},orbit=.65,elevation=.42,distance=10,lastRead=0,trail=[],traceTime=0,camTarget=V(0,2.5,0);
+const stickActive={left:false,right:false},inertia=V(.1,.18,.1),rotorArm=.76,yawLever=.08;
+const motors=[{id:'FL',x:-1,z:-1,spin:1},{id:'FR',x:1,z:-1,spin:-1},{id:'RL',x:-1,z:1,spin:-1},{id:'RR',x:1,z:1,spin:1}].map(m=>({...m,force:g/4,speed:1,phase:0}));
+// Full travel retains the original endpoints. Expo acts independently on each axis.
+function shape(x){const dead=.065,u=clamp((Math.abs(x)-dead)/(1-dead),0,1);return Math.sign(x)*(.3*u+.7*u*u*u);}
+function mixColor(a,b,t){return 'rgb('+a.map((v,i)=>Math.round(v+(b[i]-v)*t)).join(',')+')';}
+function motorColor(speed){const delta=speed-1;if(Math.abs(delta)<.012)return '#000000';const t=clamp((Math.abs(delta)-.012)*8,0,1);return mixColor([0,0,0],delta<0?[22,119,255]:[229,57,53],t);}
+function theme(){const s=getComputedStyle(root);for(const [key,name] of Object.entries({fg:'--game-fg',muted:'--game-muted',ground:'--land',sky:'--sky',grid:'--grid',body:'--drone-fill',panel:'--game-panel',line:'--game-line'})){const chip=document.createElement('span');chip.style.color='var('+name+')';root.append(chip);palette[key]=getComputedStyle(chip).color;chip.remove();}Object.assign(palette,{T:'#8455c5',Tv:'#168775',Th:'#c28219',W:palette.muted,D:palette.muted});}
+function updateStatus(){el('status').textContent=mode==='acro'?'Release to keep the angle.':mode==='angle'?'Release to level; momentum continues.':'Release to brake and hover.';el('left-label').textContent=mode==='pos'?'Turn · Climb':'Turn · Power';el('right-label').textContent=mode==='pos'?'Move':'Tilt';}
+function attitudeRate(target){let error=qm({w:q.w,x:-q.x,y:-q.y,z:-q.z},target);if(error.w<0)error={w:-error.w,x:-error.x,y:-error.y,z:-error.z};return V(clamp(10*error.x,-4,4),clamp(10*error.y,-1.9,1.9),clamp(10*error.z,-4,4));}
+function updateMotors(torque,collective,dt){
+ let base=collective/4;const maxForce=g/2;
+ const differentials=motors.map(m=>torque.z*m.x/(4*rotorArm)-torque.x*m.z/(4*rotorArm)-torque.y*m.spin/(4*yawLever));
+ const span=Math.max(...differentials)-Math.min(...differentials);let scale=collective<.001?0:Math.min(1,maxForce/(span||1));const low=Math.min(...differentials)*scale,high=Math.max(...differentials)*scale;base=clamp(base,-low,maxForce-high);
+ const motorResponse=1-Math.exp(-dt/.045);
+ motors.forEach((m,i)=>{const target=clamp(base+differentials[i]*scale,0,maxForce);m.force+=(target-m.force)*motorResponse;m.speed=Math.sqrt(Math.max(0,m.force)/(g/4));const visualRate=m.speed<.01?0:5*Math.exp(clamp(8*(m.speed-1),-2,1.25));m.phase=(m.phase+m.spin*visualRate*dt)%(Math.PI*2);});
+ T=motors.reduce((total,m)=>total+m.force,0);
+ const actual=motors.reduce((a,m)=>add(a,V(-m.z*rotorArm*m.force,-m.spin*yawLever*m.force,m.x*rotorArm*m.force)),V());
+ const momentum=V(inertia.x*omega.x,inertia.y*omega.y,inertia.z*omega.z),gyro=cross(omega,momentum),net=sub(sub(actual,gyro),mul(omega,.025));
+ omega=add(omega,V(net.x/inertia.x*dt,net.y/inertia.y*dt,net.z/inertia.z*dt));
+ const rate=norm(omega);if(rate>1e-9)q=qn(qm(q,axis(unit(omega),rate*dt)));
+}
+function step(dt){
+ const ease=1-Math.exp(-dt/.065);filtered=add(filtered,mul(sub(V(shape(roll),shape(yaw),shape(pitch)),filtered),ease));filteredClimb+=(shape((throttle-.5)*2)-filteredClimb)*ease;
+ drag=mul(v,-.12*norm(v));
+ const cy=Math.cos(heading),sy=Math.sin(heading),right=V(cy,0,sy),forward=V(sy,0,-cy);heading+=filtered.y*1.9*dt;
+ let desiredRate,collective=throttle*2*g;
+ if(mode==='acro'){
+  desiredRate=V(-filtered.z*4,-filtered.y*1.9,-filtered.x*4);
+  const front=rot(q,V(0,0,-1));if(Math.hypot(front.x,front.z)>.15)heading=Math.atan2(front.x,-front.z);
+ }else{
+  let targetPitch=filtered.z*.72,targetRoll=filtered.x*.72;
+  if(mode==='pos'){
+   const moving=Math.hypot(filtered.x,filtered.z)>.005;
+   let desired=add(mul(right,filtered.x*6),mul(forward,filtered.z*6));
+   if(moving){hold.x=p.x;hold.z=p.z;}else{if(wasMoving){hold.x=p.x+v.x*.35;hold.z=p.z+v.z*.35;}desired=V(clamp((hold.x-p.x)*1.2,-4,4),0,clamp((hold.z-p.z)*1.2,-4,4));}wasMoving=moving;
+   let ax=(desired.x-v.x)*2.1-drag.x,az=(desired.z-v.z)*2.1-drag.z;const horizontal=Math.hypot(ax,az);if(horizontal>8){ax*=8/horizontal;az*=8/horizontal;}
+   const climb=filteredClimb*3;hold.y=clamp(hold.y+climb*dt,.28,60);
+   const ay=clamp((hold.y-p.y)*3+(climb-v.y)*2.8,-7,7),vertical=g+ay-drag.y;
+   targetRoll=Math.atan2(dot(V(ax,0,az),right),vertical);targetPitch=Math.atan2(dot(V(ax,0,az),forward),vertical);
+   const up=rot(q,V(0,1,0));collective=clamp(vertical/Math.max(.3,up.y),0,2*g);
+  }
+  desiredRate=attitudeRate(attitude(heading,targetPitch,targetRoll));
+ }
+ const rateError=sub(desiredRate,omega),torque=add(V(inertia.x*rateError.x*12,inertia.y*rateError.y*12,inertia.z*rateError.z*12),mul(omega,.025));
+ updateMotors(torque,collective,dt);
+ thrust=mul(rot(q,V(0,1,0)),T);const acceleration=add(add(thrust,drag),V(0,-g,0));v=add(v,mul(acceleration,dt));p=add(p,mul(v,dt));
+ if(p.y<.28){p.y=.28;if(v.y<0)v.y=0;v.x*=Math.exp(-5*dt);v.z*=Math.exp(-5*dt);omega=mul(omega,Math.exp(-2*dt));}
+ if(p.y>80){p.y=80;v.y=Math.min(0,v.y);}
+ traceTime+=dt;if(traceTime>.12){traceTime=0;trail.push({...p});if(trail.length>80)trail.shift();}
+}
+let eye,camRight,camUp,camForward,forceLabels=[];
+function camera(){camTarget=V(p.x,p.y,p.z);eye=add(camTarget,V(Math.sin(orbit)*Math.cos(elevation)*distance,Math.sin(elevation)*distance,Math.cos(orbit)*Math.cos(elevation)*distance));camForward=unit(sub(camTarget,eye));camRight=unit(cross(camForward,V(0,1,0)));camUp=cross(camRight,camForward);}
+function project(a){const d=sub(a,eye),z=dot(d,camForward);if(z<.2)return null;const f=Math.min(height*.96,width*.95);return {x:width/2+dot(d,camRight)*f/z,y:height*.49-dot(d,camUp)*f/z,z};}
+function line(a,b,color,lw=1,alpha=1,dash=[]){const A=project(a),B=project(b);if(!A||!B)return;ctx.globalAlpha=alpha;ctx.strokeStyle=color;ctx.lineWidth=lw;ctx.setLineDash(dash);ctx.beginPath();ctx.moveTo(A.x,A.y);ctx.lineTo(B.x,B.y);ctx.stroke();ctx.setLineDash([]);ctx.globalAlpha=1;}
+function polygon(points,fill,stroke=null){const pts=points.map(project);if(pts.some(x=>!x))return;ctx.beginPath();pts.forEach((a,i)=>i?ctx.lineTo(a.x,a.y):ctx.moveTo(a.x,a.y));ctx.closePath();ctx.fillStyle=fill;ctx.fill();if(stroke){ctx.strokeStyle=stroke;ctx.lineWidth=1;ctx.stroke();}}
+function text(t,x,y,align='left',muted=false){ctx.fillStyle=muted?palette.muted:palette.fg;ctx.textAlign=align;ctx.fillText(t,x,y);}
+function vector(origin,force,color,tag){if(norm(force)<.15)return;const end=add(origin,mul(force,.19)),a=project(origin),b=project(end);if(!a||!b)return;line(origin,end,color,2.5);const an=Math.atan2(b.y-a.y,b.x-a.x);ctx.fillStyle=color;ctx.beginPath();ctx.moveTo(b.x,b.y);ctx.lineTo(b.x-9*Math.cos(an-.4),b.y-9*Math.sin(an-.4));ctx.lineTo(b.x-9*Math.cos(an+.4),b.y-9*Math.sin(an+.4));ctx.fill();if(tag)forceLabels.push({tag,x:clamp(b.x+9,12,width-70),y:clamp(b.y-6,42,height-28),end:b});}
+function render(){if(!width||!palette.fg)return;camera();ctx.clearRect(0,0,width,height);ctx.fillStyle=palette.sky;ctx.fillRect(0,0,width,height);ctx.font='12px '+getComputedStyle(root).fontFamily;forceLabels=[];
+ const gridCenter=V(Math.floor(p.x/2)*2,0,Math.floor(p.z/2)*2),n=22;
+ // The horizon-facing ground is a clipped, world-space plane.
+ const corners=[V(-80,0,-80),V(80,0,-80),V(80,0,80),V(-80,0,80)].map(a=>add(a,V(p.x,0,p.z)));
+ let groundPoly=corners;const clipped=[];
+ for(let i=0;i<groundPoly.length;i++){const A=groundPoly[i],B=groundPoly[(i+1)%groundPoly.length],da=dot(sub(A,eye),camForward)-.25,db=dot(sub(B,eye),camForward)-.25;if(da>=0)clipped.push(A);if((da>=0)!==(db>=0))clipped.push(add(A,mul(sub(B,A),da/(da-db))));}
+ ctx.globalAlpha=.45;polygon(clipped,palette.ground);ctx.globalAlpha=1;
+ // Draw grid segments individually so crossing the camera plane never breaks the ground.
+ for(let i=-n;i<=n;i++){for(let j=-n;j<n;j++){
+ const a=add(gridCenter,V(i*2,0,j*2)),b=add(a,V(0,0,2));line(a,b,palette.grid,1,.5);
+ const d=add(gridCenter,V(j*2,0,i*2));line(d,add(d,V(2,0,0)),palette.grid,1,.5);
+ }}
+ // Home landing marker, permanently anchored at world origin.
+ const ring=[];for(let i=0;i<=48;i++){const a=i*Math.PI/24;ring.push(V(Math.cos(a)*1.3,.015,Math.sin(a)*1.3));}for(let i=1;i<ring.length;i++)line(ring[i-1],ring[i],palette.muted,1.5);
+ line(V(-.5,.02,0),V(.5,.02,0),palette.muted,2);line(V(0,.02,-.5),V(0,.02,.5),palette.muted,2);
+ if(trail.length>1)for(let i=1;i<trail.length;i++)line(trail[i-1],trail[i],palette.muted,1.5,.1+.45*i/trail.length);
+ // Shadow and altitude tether give an unambiguous ground reference.
+ const shadow=[];for(let i=0;i<32;i++){const a=i*Math.PI/16;shadow.push(V(p.x+Math.cos(a)*.85,.025,p.z+Math.sin(a)*.85));}ctx.globalAlpha=.15;polygon(shadow,palette.fg);ctx.globalAlpha=1;
+ line(V(p.x,.03,p.z),p,palette.muted,1,.6,[3,5]);
+ const world=a=>add(p,rot(q,a));
+ // A box body plus four rotating propellers in true 3D coordinates.
+ const body=[V(-.27,-.13,-.4),V(.27,-.13,-.4),V(.27,-.13,.4),V(-.27,-.13,.4),V(-.27,.13,-.4),V(.27,.13,-.4),V(.27,.13,.4),V(-.27,.13,.4)].map(world);
+ for(const face of [[0,1,5,4],[1,2,6,5],[2,3,7,6],[3,0,4,7],[4,5,6,7]])polygon(face.map(i=>body[i]),palette.body,palette.fg);
+ for(const m of motors){const motor=V(m.x*.76,0,m.z*.76),color=motorColor(m.speed);line(world(V()),world(motor),palette.fg,5);const disk=[];for(let i=0;i<24;i++){const a=i*Math.PI/12;disk.push(world(add(motor,V(Math.cos(a)*.38,.11,Math.sin(a)*.38))));}ctx.globalAlpha=.3;polygon(disk,color);ctx.globalAlpha=1;for(let i=0;i<24;i++)line(disk[i],disk[(i+1)%24],'#e6edf1',4,.65);for(let i=0;i<24;i++)line(disk[i],disk[(i+1)%24],color,2,.95);line(world(add(motor,V(Math.cos(m.phase)*.36,.12,Math.sin(m.phase)*.36))),world(add(motor,V(-Math.cos(m.phase)*.36,.12,-Math.sin(m.phase)*.36))),color,4);
+ if(el('motor-arrows').checked)vector(world(add(motor,V(0,.13,0))),rot(q,V(0,m.force,0)),color,null);}
+ // Front edge stays distinct without a text label.
+ line(world(V(-.25,.16,-.4)),world(V(.25,.16,-.4)),palette.T,4);
+ if(el('forces').checked){vector(p,thrust,palette.T,'Thrust');vector(p,V(0,thrust.y,0),palette.Tv,'Up');vector(p,V(thrust.x,0,thrust.z),palette.Th,'Side');vector(p,V(0,-g,0),palette.W,'Weight');vector(p,drag,palette.D,null);}
+ const placed=[];
+ for(const item of forceLabels){const same=placed.find(a=>Math.hypot(a.end.x-item.end.x,a.end.y-item.end.y)<12);if(same){same.tag+=' / '+item.tag;continue;}let y=item.y;while(placed.some(a=>Math.abs(a.x-item.x)<85&&Math.abs(a.y-y)<17))y+=18;item.y=clamp(y,40,height-35);placed.push(item);}
+ for(const item of placed){if(Math.hypot(item.x-item.end.x,item.y-item.end.y)>24){ctx.strokeStyle=palette.muted;ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(item.end.x,item.end.y);ctx.lineTo(item.x,item.y-4);ctx.stroke();}text(item.tag,item.x,item.y);}
+
+
+}
+function stickDraw(side){const canvas=el(side),s=canvas.getBoundingClientRect().width;if(!s)return;const d=devicePixelRatio||1;canvas.width=Math.round(s*d);canvas.height=Math.round(s*d);const k=canvas.getContext('2d');k.scale(d,d);const mid=s/2,r=s*.36,x=side==='left'?yaw:roll,y=side==='left'?(throttle*2-1):pitch;
+ k.strokeStyle=palette.line;k.lineWidth=1.5;k.beginPath();k.arc(mid,mid,r,0,Math.PI*2);k.stroke();k.globalAlpha=.65;k.beginPath();k.moveTo(mid-r,mid);k.lineTo(mid+r,mid);k.moveTo(mid,mid-r);k.lineTo(mid,mid+r);k.stroke();k.globalAlpha=1;
+ k.fillStyle=palette.fg;k.globalAlpha=.12;k.beginPath();k.arc(mid+x*r,mid-y*r,22,0,Math.PI*2);k.fill();k.globalAlpha=1;k.beginPath();k.arc(mid+x*r,mid-y*r,11,0,Math.PI*2);k.fill();
+}
+function sync(){for(const [id,value] of [['throttle',throttle],['yaw',yaw],['roll',roll],['pitch',pitch]])el(id).value=Math.round(value*100);stickDraw('left');stickDraw('right');}
+function release(side){stickActive[side]=false;if(side==='left'){yaw=0;if(mode==='pos')throttle=.5;}else{roll=0;pitch=0;}sync();}
+const cancelPointers=[];
+for(const side of ['left','right']){const pad=el(side);let pointer=null;pad.addEventListener('contextmenu',e=>e.preventDefault());
+ const move=e=>{const r=pad.getBoundingClientRect(),radius=r.width*.36,x=clamp((e.clientX-r.left-r.width/2)/radius,-1,1),y=clamp(-(e.clientY-r.top-r.height/2)/radius,-1,1);if(side==='left'){yaw=x;throttle=(y+1)/2;}else{roll=x;pitch=y;}sync();};
+ pad.addEventListener('pointerdown',e=>{if(pointer!==null)return;e.preventDefault();e.stopPropagation();pointer=e.pointerId;pad.setPointerCapture(pointer);stickActive[side]=true;move(e);});
+ pad.addEventListener('pointermove',e=>{if(e.pointerId===pointer){e.preventDefault();e.stopPropagation();move(e);}});
+ for(const name of ['pointerup','pointercancel','lostpointercapture'])pad.addEventListener(name,e=>{if(e.pointerId===pointer){e.preventDefault();e.stopPropagation();pointer=null;release(side);}});
+ cancelPointers.push(()=>{pointer=null;release(side);});
+}
+for(const id of ['throttle','yaw','roll','pitch']){const input=el(id);input.oninput=()=>{const value=Number(input.value)/100;if(id==='throttle')throttle=value;if(id==='yaw')yaw=value;if(id==='roll')roll=value;if(id==='pitch')pitch=value;sync();};const end=()=>{if(id==='throttle'&&mode==='pos')throttle=.5;if(id==='yaw')yaw=0;if(id==='roll')roll=0;if(id==='pitch')pitch=0;sync();};input.addEventListener('pointerup',end);input.addEventListener('pointercancel',end);input.addEventListener('keyup',end);input.addEventListener('blur',end);}
+el('mode').onchange=()=>{mode=el('mode').value;cancelPointers.forEach(fn=>fn());if(mode==='pos')throttle=.5;filtered=V();filteredClimb=0;const front=rot(q,V(0,0,-1));heading=Math.atan2(front.x,-front.z);hold=V(p.x,p.y<.35?2.5:p.y,p.z);wasMoving=false;sync();updateStatus();};
+function pauseUI(){el('pause').textContent=running?'Pause':'Play';el('pause').setAttribute('aria-pressed',String(!running));}el('pause').onclick=()=>{running=!running;cancelPointers.forEach(fn=>fn());pauseUI();};
+function settings(open){el('settings').hidden=!open;el('settings-button').setAttribute('aria-expanded',String(open));if(open)cancelPointers.forEach(fn=>fn());}
+el('settings-button').onclick=()=>settings(el('settings').hidden);el('done').onclick=()=>{settings(false);el('settings-button').focus();};
+root.addEventListener('keydown',e=>{if(e.key==='Escape')settings(false);});
+const pointers=new Map();let previousView=null;
+function viewState(){const points=[...pointers.values()];return points.length>1?{count:points.length,gap:Math.hypot(points[0].x-points[1].x,points[0].y-points[1].y)}:points.length?{count:1,x:points[0].x,y:points[0].y}:null;}
+c.addEventListener('pointerdown',e=>{e.preventDefault();pointers.set(e.pointerId,{x:e.clientX,y:e.clientY});c.setPointerCapture(e.pointerId);previousView=viewState();});
+c.addEventListener('pointermove',e=>{if(!pointers.has(e.pointerId))return;e.preventDefault();pointers.set(e.pointerId,{x:e.clientX,y:e.clientY});const now=viewState();if(previousView&&now.count===previousView.count){if(now.count>1){if(now.gap>10&&previousView.gap>10)distance=clamp(distance*previousView.gap/now.gap,5,28);}else{orbit-=(now.x-previousView.x)*.008;elevation=clamp(elevation+(now.y-previousView.y)*.006,.12,1.25);}}previousView=now;});
+for(const name of ['pointerup','pointercancel','lostpointercapture'])c.addEventListener(name,e=>{pointers.delete(e.pointerId);previousView=viewState();});c.addEventListener('wheel',e=>{e.preventDefault();distance=clamp(distance*Math.exp(e.deltaY*.001),5,28);},{passive:false});
+function readings(){el('telemetry').textContent=p.y.toFixed(1)+' m high  ·  '+Math.hypot(v.x,v.z).toFixed(1)+' m/s';}
+new ResizeObserver(()=>{width=c.getBoundingClientRect().width;height=c.getBoundingClientRect().height;const d=devicePixelRatio||1;c.width=Math.round(width*d);c.height=Math.round(height*d);ctx.setTransform(d,0,0,d,0,0);sync();render();}).observe(c);
+new MutationObserver(()=>{theme();sync();}).observe(document.documentElement,{attributes:true,attributeFilter:['class','style','data-theme']});
+window.addEventListener('blur',()=>{cancelPointers.forEach(fn=>fn());pointers.clear();previousView=null;});
+document.addEventListener('visibilitychange',()=>{if(document.hidden){cancelPointers.forEach(fn=>fn());last=0;acc=0;}});
+function loop(t){const dt=last?Math.min((t-last)/1000,.05):0;last=t;if(running&&!document.hidden){acc+=dt;while(acc>=1/120){step(1/120);acc-=1/120;}}else acc=0;render();if(t-lastRead>120){readings();lastRead=t;}requestAnimationFrame(loop);}
+theme();sync();updateStatus();pauseUI();readings();requestAnimationFrame(loop);
+})();
+</script>
+<script>
+// The game re-reads its palette when data-theme changes.
+const scheme=matchMedia('(prefers-color-scheme: dark)'),setTheme=()=>document.documentElement.dataset.theme=scheme.matches?'dark':'light';
+setTheme();scheme.addEventListener('change',setTheme);
+</script>
+</body>
+</html>
